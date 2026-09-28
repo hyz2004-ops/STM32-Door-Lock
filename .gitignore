@@ -1,0 +1,23 @@
+# ===== Build artifacts (Keil MDK) =====
+Object/
+User/Objects/
+User/Listings/
+User/DebugConfig/
+
+# ===== Keil / JLink user-specific files =====
+User/JLinkLog.txt
+User/JLinkSettings.ini
+User/*.uvguix*
+User/*.uvoptx
+
+# ===== Large binaries / archives (kept locally, not on GitHub) =====
+本地看板部署包.zip
+本地看板部署包/mosquitto-*.exe
+
+# ===== OS / editor noise =====
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.idea/
+.vscode/

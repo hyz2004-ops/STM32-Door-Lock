@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能门锁 · 本地监控台</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2b3442;
+    --txt:#dbe2ea; --dim:#8b98a8; --accent:#4da3ff;
+    --pwd:#4da3ff; --fing:#3fb96f; --card:#e8a13c; --cloud:#b07fe8;
+    --danger:#e5534b; --ok:#3fb96f;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--txt);font-family:"Segoe UI","Microsoft YaHei",sans-serif;min-height:100vh;display:flex;flex-direction:column}
+
+  /* ===== 顶栏 ===== */
+  header{display:flex;align-items:center;gap:16px;padding:14px 22px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:18px;font-weight:600;letter-spacing:1px;white-space:nowrap}
+  header h1::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--accent);margin-right:9px;vertical-align:1px}
+  .conn{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;flex:1;min-width:320px}
+  .conn .dot{width:9px;height:9px;border-radius:50%;background:var(--danger);flex:none;transition:.3s}
+  .conn.on .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .conn input{flex:1;background:transparent;border:none;outline:none;color:var(--txt);font-size:13px;font-family:Consolas,monospace}
+  .btn{background:var(--accent);color:#08111d;border:none;border-radius:7px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .btn:hover{filter:brightness(1.12)}
+  .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  .btn.danger{background:var(--danger);color:#fff}
+
+  /* ===== 统计卡片 ===== */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:16px 22px 4px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card .label{font-size:12px;color:var(--dim);margin-bottom:6px}
+  .card .value{font-size:26px;font-weight:700;font-family:Consolas,monospace}
+  .card .value small{font-size:13px;color:var(--dim);font-weight:400;margin-left:5px}
+  #stToday{color:var(--accent)} #stTotal{color:var(--txt)}
+  #stPwd{color:var(--pwd)} #stFing{color:var(--fing)} #stCard{color:var(--card)} #stCloud{color:var(--cloud)}
+
+  /* ===== 主体两栏 ===== */
+  main{flex:1;display:grid;grid-template-columns:1fr 300px;gap:14px;padding:14px 22px 20px;min-height:0}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0}
+  .panel .phead{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .panel .phead h2{font-size:14px;font-weight:600;color:var(--dim)}
+  .phead .mini{font-size:12px;color:var(--dim)}
+
+  /* 事件流 */
+  #stream{flex:1;overflow-y:auto;padding:8px 0;font-family:Consolas,"Microsoft YaHei",monospace}
+  .ev{display:flex;align-items:center;gap:12px;padding:9px 16px;border-bottom:1px solid rgba(43,52,66,.5);animation:slideIn .25s ease}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .ev .t{font-size:12px;color:var(--dim);flex:none;width:64px}
+  .ev .rt{font-size:11px;color:#5b6a7d;flex:none;width:60px}
+  .badge{flex:none;font-size:11px;font-weight:600;padding:3px 9px;border-radius:5px;color:#0b1220;min-width:42px;text-align:center}
+  .b-pwd{background:var(--pwd)} .b-fing{background:var(--fing)} .b-card{background:var(--card)} .b-cloud{background:var(--cloud)}
+  .ev .info{font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev .seq{font-size:11px;color:#5b6a7d;flex:none}
+  .sys{padding:9px 16px;font-size:12px;color:var(--dim);border-bottom:1px solid rgba(43,52,66,.5)}
+  .empty{padding:40px;text-align:center;color:#5b6a7d;font-size:13px}
+
+  /* 右栏 */
+  .side{display:flex;flex-direction:column;gap:14px}
+  .unlock{margin:16px;padding:26px 16px;background:linear-gradient(160deg,#1a2b18,#12241c);border:1px solid #2f5238;border-radius:10px;text-align:center;cursor:pointer;user-select:none;transition:.15s}
+  .unlock:hover{border-color:var(--ok);filter:brightness(1.15)}
+  .unlock:active{transform:scale(.97)}
+  .unlock .ico{font-size:30px;margin-bottom:8px}
+  .unlock .big{font-size:16px;font-weight:700;color:var(--ok);letter-spacing:2px}
+  .unlock .sub{font-size:11px;color:var(--dim);margin-top:6px}
+  .side .row{display:flex;gap:8px;padding:0 16px 16px}
+  .side .row .btn{flex:1}
+  /* 命令发送区 */
+  .cmdbox{margin:0 16px 16px}
+  .cmdbox .cmdrow{display:flex;gap:8px}
+  .cmdbox input{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--txt);padding:9px 12px;font-size:13px;font-family:Consolas,monospace;outline:none;min-width:0}
+  .cmdbox input:focus{border-color:var(--accent)}
+  .cmdbox .btn{flex:none}
+  .cmdbox .hint{margin-top:8px;font-size:11px;color:#5b6a7d;line-height:1.7}
+  .cmdbox .hint code{color:var(--dim);font-family:Consolas,monospace;cursor:pointer}
+  .cmdbox .hint code:hover{color:var(--accent)}
+  .tips{margin:0 16px 16px;font-size:12px;color:var(--dim);line-height:1.8;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .tips code{color:var(--accent);font-family:Consolas,monospace}
+
+  /* 滚动条 */
+  ::-webkit-scrollbar{width:9px}
+  ::-webkit-scrollbar-thumb{background:#2b3442;border-radius:5px}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4656}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>智能门锁 · 本地监控台</h1>
+  <div class="conn" id="connBox">
+    <span class="dot"></span>
+    <input id="brokerUrl" value="ws://127.0.0.1:9001" spellcheck="false">
+  </div>
+  <button class="btn" id="btnConn">连 接</button>
+  <button class="btn ghost" id="btnClear">清空记录</button>
+</header>
+
+<section class="stats">
+  <div class="card"><div class="label">今日开锁</div><div class="value" id="stToday">0<small>次</small></div></div>
+  <div class="card"><div class="label">累计开锁</div><div class="value" id="stTotal">0<small>次</small></div></div>
+  <div class="card"><div class="label">密码开锁</div><div class="value" id="stPwd">0</div></div>
+  <div class="card"><div class="label">指纹开锁</div><div class="value" id="stFing">0</div></div>
+  <div class="card"><div class="label">刷卡开锁</div><div class="value" id="stCard">0</div></div>
+  <div class="card"><div class="label">云端开锁</div><div class="value" id="stCloud">0</div></div>
+</section>
+
+<main>
+  <div class="panel">
+    <div class="phead"><h2>实时事件流</h2><span class="mini" id="evCount">0 条</span></div>
+    <div id="stream"><div class="empty">等待门锁上报 —— 刷一下卡试试</div></div>
+  </div>
+
+  <div class="side">
+    <div class="panel">
+      <div class="phead"><h2>远程控制</h2></div>
+      <div class="unlock" id="btnUnlock">
+        <div class="ico">🔓</div>
+        <div class="big">远程开锁</div>
+        <div class="sub">向 doorlock002 发送 on</div>
+      </div>
+      <div class="row">
+        <button class="btn danger" id="btnLockTip">报警测试</button>
+      </div>
+      <div class="cmdbox">
+        <div class="cmdrow">
+          <input id="cmdInput" list="cmdList" placeholder="输入命令，回车发送，如 LOG / FING:ADD" spellcheck="false" autocomplete="off">
+          <button class="btn" id="btnSend">发送</button>
+        </div>
+        <datalist id="cmdList">
+          <option value="LOG"><option value="LOG:ALL"><option value="LOG:CLEAR">
+          <option value="FING:ADD"><option value="FING:LIST"><option value="FING:CLEAR">
+          <option value="FING:DEL:0">
+          <option value="CARD:ADD"><option value="CARD:NUM"><option value="CARD:CLEAR">
+          <option value="PWD:123456"><option value="on">
+        </datalist>
+        <div class="hint">常用：<code data-cmd="LOG">LOG</code> 最近记录 · <code data-cmd="FING:ADD">FING:ADD</code> 加指纹 · <code data-cmd="CARD:ADD">CARD:ADD</code> 加卡 · <code data-cmd="PWD:123456">PWD:123456</code> 改密码</div>
+      </div>
+      <div class="tips">
+        <b>部署提示</b><br>
+        · 本页连同 <code>mqtt.min.js</code> 一起放在本机任意文件夹，双击打开即可<br>
+        · 代理默认 <code>ws://127.0.0.1:9001</code>（看板与 Mosquitto 同机运行不用改）<br>
+        · 主题：上报 <code>doorlockLog</code>，下发 <code>doorlock002</code><br>
+        · 连接失败请检查 Mosquitto 是否启动、防火墙是否放行 9001 端口
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="mqtt.min.js"></script>
+<script>
+/* ================= 配置 ================= */
+const TOPIC_UP   = 'doorlockLog';    /* 门锁 → 看板 */
+const TOPIC_DOWN = 'doorlock002';    /* 看板 → 门锁 */
+const TYPE_NAME  = {PWD:'密码', FING:'指纹', CARD:'刷卡', CLOUD:'云端'};
+const TYPE_CLASS = {PWD:'b-pwd', FING:'b-fing', CARD:'b-card', CLOUD:'b-cloud'};
+
+/* ================= 状态 ================= */
+let client = null;
+let stats = {total:0, today:0, PWD:0, FING:0, CARD:0, CLOUD:0};
+let evCount = 0;
+
+const $ = id => document.getElementById(id);
+const brokerInput = $('brokerUrl');
+/* 默认代理地址: 页面经 HTTP 打开时跟随所在主机(手机访问时用电脑IP), 本机双击文件则用 127.0.0.1 */
+const defaultBroker = (location.protocol.indexOf('http') === 0 &&
+                       location.hostname !== '127.0.0.1' && location.hostname !== 'localhost')
+  ? 'ws://' + location.hostname + ':9001'
+  : 'ws://127.0.0.1:9001';
+brokerInput.value = localStorage.getItem('brokerUrl') || defaultBroker;
+
+/* ================= 连接管理 ================= */
+function setConn(on, text){
+  $('connBox').classList.toggle('on', on);
+  $('btnConn').textContent = on ? '断 开' : '连 接';
+  sysLog(text);
+}
+function sysLog(text){
+  const box = $('stream');
+  const empty = box.querySelector('.empty'); if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'sys';
+  div.textContent = '[系统] ' + new Date().toLocaleTimeString('zh-CN',{hour12:false}) + '  ' + text;
+  box.prepend(div);
+  trimStream();
+}
+function trimStream(){ const box=$('stream'); while(box.children.length>300) box.lastChild.remove(); }
+
+function connect(){
+  const url = brokerInput.value.trim();
+  localStorage.setItem('brokerUrl', url);
+  setConn(false, '正在连接 ' + url + ' ...');
+  try{ client = mqtt.connect(url, {clientId:'dashboard-' + Math.random().toString(16).slice(2,8), reconnectPeriod:3000}); }
+  catch(e){ setConn(false, '地址格式错误: ' + e.message); return; }
+
+  client.on('connect', () => {
+    setConn(true, '已连接，订阅 ' + TOPIC_UP);
+    client.subscribe(TOPIC_UP, err => { if(err) sysLog('订阅失败: '+err.message); });
+  });
+  client.on('message', (topic, payload) => onMessage(payload.toString()));
+  client.on('reconnect', () => setConn(false, '连接丢失，重连中...'));
+  client.on('close',      () => setConn(false, '连接已断开'));
+  client.on('error',  e => setConn(false, '错误: ' + e.message));
+}
+function disconnect(){ if(client){ client.end(); client=null; } setConn(false,'已手动断开'); }
+$('btnConn').onclick = () => (client && client.connected) ? disconnect() : connect();
+
+/* ================= 消息处理 ================= */
+function onMessage(raw){
+  const empty = document.querySelector('.empty'); if (empty) empty.remove();
+  /* 解析: open,PWD,id0,no42,09:57:38 */
+  const p = raw.split(',');
+  let type='?', id='-', seq='-', time='';
+  if (p[0]==='open' && p.length>=4){
+    type = p[1] in TYPE_NAME ? p[1] : '?';
+    id   = p[2].replace(/^id/,'');
+    seq  = p[3].replace(/^no/,'');
+    time = p[4] || '';
+  }
+  /* 统计: 只有真实开锁事件(open,方式)才计数, 查记录/应答等消息不计 */
+  const isOpen = (p[0]==='open' && p.length>=4 && (p[1] in TYPE_NAME));
+  if (isOpen){
+    stats.total++; stats.today++; stats[p[1]]++;
+  }
+  const now = new Date();
+  renderStats();
+
+  /* 事件行 */
+  const box = $('stream');
+  const div = document.createElement('div');
+  div.className = 'ev';
+  const cls = TYPE_CLASS[type] || 'b-cloud';
+  const name = TYPE_NAME[type] || raw.slice(0,12);
+  div.innerHTML =
+    '<span class="t">' + (time || now.toLocaleTimeString('zh-CN',{hour12:false})) + '</span>' +
+    '<span class="rt">' + now.toLocaleTimeString('zh-CN',{hour12:false}) + '</span>' +
+    '<span class="badge ' + cls + '">' + name + '</span>' +
+    '<span class="info">' + (type==='?' ? raw : ('编号ID ' + id + (seq!=='-' ? ' · 第 ' + seq + ' 条记录' : ''))) + '</span>' +
+    (seq!=='-' && type!=='?' ? '<span class="seq">no' + seq + '</span>' : '');
+  box.prepend(div);
+  trimStream();
+  evCount++; $('evCount').textContent = evCount + ' 条';
+}
+function renderStats(){
+  $('stTotal').innerHTML  = stats.total + '<small>次</small>';
+  $('stToday').innerHTML  = stats.today + '<small>次</small>';
+  $('stPwd').textContent   = stats.PWD;
+  $('stFing').textContent  = stats.FING;
+  $('stCard').textContent  = stats.CARD;
+  $('stCloud').textContent = stats.CLOUD;
+}
+
+/* ================= 远程控制 ================= */
+function publish(payload){
+  if (!client || !client.connected){ sysLog('未连接，指令未发送'); return false; }
+  client.publish(TOPIC_DOWN, payload);
+  sysLog('已下发: ' + payload);
+  return true;
+}
+$('btnUnlock').onclick = () => {
+  if (confirm('确认远程开锁？')) publish('on');
+};
+$('btnLockTip').onclick = () => sysLog('报警测试: 可在门锁端触发蜂鸣验证联动');
+/* 命令输入: 回车或点发送, 把命令原样发到 doorlock002 */
+$('btnSend').onclick = () => {
+  const v = $('cmdInput').value.trim();
+  if (!v) return;
+  if (publish(v)) $('cmdInput').value = '';
+};
+$('cmdInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnSend').click(); });
+/* 点击常用命令直接填入 */
+document.querySelectorAll('.cmdbox .hint code').forEach(el => {
+  el.onclick = () => { $('cmdInput').value = el.dataset.cmd; $('cmdInput').focus(); };
+});
+$('btnClear').onclick = () => {
+  $('stream').innerHTML = '<div class="empty">等待门锁上报 —— 刷一下卡试试</div>';
+  evCount = 0; $('evCount').textContent = '0 条';
+  stats = {total:0, today:0, PWD:0, FING:0, CARD:0, CLOUD:0};
+  renderStats();
+};
+
+/* ================= 自动连接 ================= */
+renderStats();
+connect();
+</script>
+</body>
+</html>
